@@ -6,7 +6,7 @@ import { UIOverlay } from './components/UIOverlay';
 
 export default function HomePage() {
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-aero-900">
+    <div className="relative w-screen h-[calc(100vh-49px)] overflow-hidden bg-aero-900">
       {/* 3D Scene Layer */}
       <Scene3D />
 
