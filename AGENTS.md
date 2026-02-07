@@ -1,3 +1,7 @@
+avoid using complex next js stuff, this is a demo app, its client side only and only using DEMO data no api routes etc.
+
+
+
 afetr making changes use npm run type-check to verify
 
 when managing data, put all mock data in /data folder
