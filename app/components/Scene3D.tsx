@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useRef } from 'react';
+import React, { useMemo, type ComponentPropsWithoutRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { 
   Stars, 
   Environment, 
@@ -11,116 +11,216 @@ import {
   Float,
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { ViewMode, FuelType, MarkerData } from '@/data/types';
-import { FUEL_CONFIGS, CRANFIELD_MARKERS, GLOBAL_HUBS } from '@/data/constants';
-import { useAppContext } from '@/context/AppContext';
+import { ViewMode, FuelType, MarkerData } from '@/app/data/types';
+import { FUEL_CONFIGS, CRANFIELD_MARKERS, GLOBAL_HUBS } from '@/app/data/constants';
+import { useAppContext } from '@/app/context/AppContext';
 
 // --- Sub-components for 3D Elements ---
 
 // 1. Aircraft Model
-const Aircraft = ({ 
+export const Aircraft = ({ 
   fuelType
 }: { 
   fuelType: FuelType; 
 }) => {
   const morph = FUEL_CONFIGS[fuelType].morphFactor;
-  const color = FUEL_CONFIGS[fuelType].color;
+  const fuselageWidth = 1 + (morph * 0.2); // More subtle morphing
 
-  // Use refs for animation if needed, but here we react to props
-  const fuselageRef = useRef<THREE.Group>(null);
+  const fuselageMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: "#e2e8f0", metalness: 0.9, roughness: 0.1 }), []);
+  const wingMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.8, roughness: 0.3 }), []);
+  const tailMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: "#b0b8c4", metalness: 0.8, roughness: 0.3 }), []);
+  const windowMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: "#0f172a", metalness: 0.95, roughness: 0.05 }), []);
 
-  // Procedural Geometry Logic
-  // Kerosene = 0 morph (Tube)
-  // H2 = 1 morph (Wider body, blended wings)
-  const fuselageWidth = 1 + (morph * 0.8); 
-  const wingScale = 1 + (morph * 0.5);
+  // A320-like shape using multiple cylinders for a tapered effect
+  const fuselageShape = useMemo(() => {
+    const group = new THREE.Group();
+    const mainBody = new THREE.Mesh(new THREE.CylinderGeometry(0.8 * fuselageWidth, 1.2 * fuselageWidth, 12, 32), fuselageMaterial);
+    mainBody.rotation.x = Math.PI / 2;
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.8 * fuselageWidth, 32, 32, 0, Math.PI * 2, 0, Math.PI/2), fuselageMaterial);
+    nose.position.z = 6;
+    nose.rotation.x = Math.PI / 2;
+    const tailCone = new THREE.Mesh(new THREE.CylinderGeometry(1.2 * fuselageWidth, 0.4 * fuselageWidth, 3, 32), fuselageMaterial);
+    tailCone.position.z = -7.5;
+    tailCone.rotation.x = Math.PI / 2;
+    
+    group.add(mainBody, nose, tailCone);
+    
+    // Passenger windows
+    const windowGeo = new THREE.BoxGeometry(0.1, 0.2, 0.1);
+    for (let i = 0; i < 10; i++) {
+      const windowLeft = new THREE.Mesh(windowGeo, windowMaterial);
+      windowLeft.position.set(-1.1 * fuselageWidth, 0.5, -2 + i * 0.8);
+      const windowRight = new THREE.Mesh(windowGeo, windowMaterial);
+      windowRight.position.set(1.1 * fuselageWidth, 0.5, -2 + i * 0.8);
+      group.add(windowLeft, windowRight);
+    }
+    return group;
+  }, [fuselageWidth, fuselageMaterial, windowMaterial]);
+
+  // More detailed cockpit
+  const cockpit = useMemo(() => {
+    const group = new THREE.Group();
+    const cockpitMain = new THREE.Mesh(new THREE.BoxGeometry(1 * fuselageWidth, 0.6, 1), windowMaterial);
+    cockpitMain.position.set(0, 0.8, 5.5);
+    cockpitMain.rotation.x = -0.2;
+    const cockpitTop = new THREE.Mesh(new THREE.BoxGeometry(0.8 * fuselageWidth, 0.2, 0.8), windowMaterial);
+    cockpitTop.position.set(0, 1.1, 5.4);
+    cockpitTop.rotation.x = -0.4;
+    group.add(cockpitMain, cockpitTop);
+    return group;
+  }, [fuselageWidth, windowMaterial]);
+
+  // Wing Shape (Airfoil-like)
+  const wingShape = useMemo(() => new THREE.Shape()
+    .moveTo(0, 0)
+    .quadraticCurveTo(2, 0.5, 8, 0.3)
+    .quadraticCurveTo(8.5, 0, 8, -1.5)
+    .quadraticCurveTo(2, -0.8, 0, -0.5)
+    .closePath(), []);
+  const extrudeSettings = useMemo(() => ({ depth: 0.2, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.1 }), []);
+  
+  const wingletShape = useMemo(() => new THREE.Shape()
+    .moveTo(0, 0)
+    .lineTo(0.5, 1)
+    .lineTo(0.3, 1)
+    .lineTo(0, 0.1)
+    .closePath(), []);
+  const wingletExtrudeSettings = useMemo(() => ({ depth: 0.1, bevelEnabled: false }), []);
 
   return (
-    <group ref={fuselageRef}>
-      {/* Fuselage */}
-      <mesh position={[0, 0, 0]}>
-        <capsuleGeometry args={[fuselageWidth, 8, 4, 16]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.2} />
+    <group rotation={[0, Math.PI, 0]}>
+      <primitive object={fuselageShape} />
+      <primitive object={cockpit} />
+      
+      {/* Swept-back Wings */}
+      <mesh position={[-0.5, -0.2, 0]} rotation={[0, -0.4, -0.1]}>
+        <extrudeGeometry args={[wingShape, extrudeSettings]} />
+        <primitive object={wingMaterial} />
+        {/* Winglet */}
+        <mesh position={[8, -0.5, 0]} rotation={[0.4, 0, 0.5]}>
+            <extrudeGeometry args={[wingletShape, wingletExtrudeSettings]} />
+            <primitive object={wingMaterial} />
+        </mesh>
+      </mesh>
+      <mesh position={[0.5, -0.2, 0]} rotation={[0, 0.4, 0.1]} scale={[-1, 1, 1]}>
+        <extrudeGeometry args={[wingShape, extrudeSettings]} />
+        <primitive object={wingMaterial} />
+         {/* Winglet */}
+        <mesh position={[8, -0.5, 0]} rotation={[0.4, 0, 0.5]}>
+            <extrudeGeometry args={[wingletShape, wingletExtrudeSettings]} />
+            <primitive object={wingMaterial} />
+        </mesh>
       </mesh>
       
-      {/* Cockpit Window */}
-      <mesh position={[0, 1, 3]}>
-         <boxGeometry args={[1.2 * fuselageWidth, 0.8, 1.5]} />
-         <meshStandardMaterial color="#1e293b" metalness={0.9} roughness={0.1} />
-      </mesh>
+      {/* Engines */}
+      <group position={[-3.5, -1, -1]} rotation={[0, 0.1, 0]}>
+        <EngineMesh color={FUEL_CONFIGS[fuelType].color} label="ENG 1" />
+      </group>
+      <group position={[3.5, -1, -1]} rotation={[0, -0.1, 0]}>
+        <EngineMesh color={FUEL_CONFIGS[fuelType].color} label="ENG 2" />
+      </group>
 
-      {/* Wings - Blended Effect via grouping */}
-      <group position={[0, -0.5, 0]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} scale={[wingScale, 1, 1]}>
-          {/* Simple wing representation */}
-          <extrudeGeometry 
+      {/* Tail Fin (Vertical Stabilizer) */}
+      <mesh position={[0, 2, -7]} rotation={[0, 0, 0.05]}>
+        <extrudeGeometry 
             args={[
               new THREE.Shape()
                 .moveTo(0, 0)
-                .lineTo(8, -4)
-                .lineTo(8, -5)
-                .lineTo(0, -2)
-                .lineTo(-8, -5)
-                .lineTo(-8, -4)
-                .lineTo(0, 0),
-              { depth: 0.5, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1 }
+                .lineTo(0, 3)
+                .lineTo(-1, 3.5)
+                .lineTo(-2.5, -1)
+                .closePath(),
+              { depth: 0.15, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.05 }
             ]} 
           />
-          <meshStandardMaterial color="#94a3b8" metalness={0.6} roughness={0.4} />
-        </mesh>
-      </group>
+        <primitive object={tailMaterial} />
+      </mesh>
 
-      {/* Engines - Interactive */}
-      <group position={[3 * wingScale, -1, 0.5]}>
-         <EngineMesh color={color} label="ENG 1" />
-      </group>
-      <group position={[-3 * wingScale, -1, 0.5]}>
-         <EngineMesh color={color} label="ENG 2" />
-      </group>
-
-      {/* Tail */}
-      <group position={[0, 1.5, -3.5]}>
-        <mesh>
-            <boxGeometry args={[0.2, 3, 2]} />
-            <meshStandardMaterial color="#cbd5e1" />
-        </mesh>
-        <mesh position={[0, 0.5, 0]} rotation={[Math.PI/2, 0, 0]}>
-            <boxGeometry args={[4, 1.5, 0.2]} />
-            <meshStandardMaterial color="#cbd5e1" />
-        </mesh>
-      </group>
+      {/* Horizontal Stabilizers */}
+       <mesh position={[-1.5, 0, -7.5]} rotation={[0, -0.5, 0]}>
+        <extrudeGeometry 
+            args={[
+              new THREE.Shape()
+                .moveTo(0, 0)
+                .lineTo(3, 0.2)
+                .lineTo(3, -0.2)
+                .lineTo(0, -0.3)
+                .closePath(),
+              { depth: 0.1, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02 }
+            ]} 
+          />
+        <primitive object={tailMaterial} />
+      </mesh>
+       <mesh position={[1.5, 0, -7.5]} rotation={[0, 0.5, 0]} scale={[-1, 1, 1]}>
+        <extrudeGeometry 
+            args={[
+              new THREE.Shape()
+                .moveTo(0, 0)
+                .lineTo(3, 0.2)
+                .lineTo(3, -0.2)
+                .lineTo(0, -0.3)
+                .closePath(),
+              { depth: 0.1, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02 }
+            ]} 
+          />
+        <primitive object={tailMaterial} />
+      </mesh>
     </group>
   );
 };
 
-const EngineMesh = ({ color, label }: { color: string, label: string }) => {
+export const EngineMesh = ({ color, label }: { color: string, label: string }) => {
+    const { setInspectedPart, setModalOpen } = useAppContext();
     const [hovered, setHover] = React.useState(false);
+
+    const handleEngineClick = (e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        setInspectedPart(label);
+        setModalOpen(true);
+    };
+
+    const darkMaterial = React.useMemo(() => new THREE.MeshStandardMaterial({ color: "#374151", metalness: 0.9, roughness: 0.4 }), []);
+    const metalMaterial = React.useMemo(() => new THREE.MeshStandardMaterial({ color: "#9ca3af", metalness: 1, roughness: 0.2 }), []);
 
     return (
         <group 
+            onClick={handleEngineClick}
             onPointerOver={() => setHover(true)}
             onPointerOut={() => setHover(false)}
+            scale={[0.8, 0.8, 0.8]}
         >
+            {/* Nacelle (Engine Casing) */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.8, 0.6, 2.5, 32]} />
-                <meshStandardMaterial 
-                    color={hovered ? "#ffffff" : "#475569"} 
-                    transparent 
-                    opacity={hovered ? 0.8 : 1} 
-                    emissive={color}
-                    emissiveIntensity={hovered ? 0.5 : 0.1}
-                />
+                <cylinderGeometry args={[1.2, 1, 3, 32]} />
+                <primitive object={hovered ? metalMaterial : darkMaterial} />
             </mesh>
+             {/* Intake Lip */}
+            <mesh position={[0, 0, 1.5]} rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[1.2, 0.1, 16, 32]} />
+                <primitive object={metalMaterial} />
+            </mesh>
+
+            {/* Exhaust Cone */}
+            <mesh position={[0, 0, -1.5]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.8, 0.5, 0.5, 32]} />
+                 <primitive object={darkMaterial} />
+            </mesh>
+
             {/* Fan blades glow */}
             <mesh position={[0, 0, 1.2]} rotation={[Math.PI/2, 0, 0]}>
-                <ringGeometry args={[0.2, 0.7, 16]} />
-                <meshBasicMaterial color={color} side={THREE.DoubleSide} />
+                <circleGeometry args={[1, 32]} />
+                <meshStandardMaterial 
+                    color={color} 
+                    side={THREE.DoubleSide} 
+                    emissive={color} 
+                    emissiveIntensity={hovered ? 2 : 0.5} 
+                />
             </mesh>
             
             {hovered && (
                 <Html position={[0, 2, 0]} center distanceFactor={10}>
                     <div className="bg-aero-900/90 border border-aero-neon text-aero-neon px-2 py-1 text-xs font-mono whitespace-nowrap rounded pointer-events-none">
-                        {label} - SYSTEM STATUS: NOMINAL
+                        CLICK TO INSPECT: {label}
                     </div>
                 </Html>
             )}
@@ -129,85 +229,154 @@ const EngineMesh = ({ color, label }: { color: string, label: string }) => {
 };
 
 // 2. Airport Infrastructure
-const Airport = () => {
+const Airport = ({ viewMode }: { viewMode: ViewMode }) => {
+  const runwayMaterial = React.useMemo(() => new THREE.MeshStandardMaterial({ color: "#2c3e50", roughness: 0.8 }), []);
+  const grassMaterial = React.useMemo(() => new THREE.MeshStandardMaterial({ color: "#2d572c" }), []);
+  const markingMaterial = React.useMemo(() => new THREE.MeshBasicMaterial({ color: "#ffffff" }), []);
+
   return (
     <group position={[0, -5, 0]}>
-        {/* Tarmac */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
-            <planeGeometry args={[100, 100]} />
-            <meshStandardMaterial color="#334155" roughness={0.8} />
+        {/* Seamless Green Background */}
+        <mesh position={[0, -0.11, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[500, 500]} />
+            <primitive object={grassMaterial} />
         </mesh>
         
-        {/* Grid lines on floor */}
-        <gridHelper args={[100, 50, 0x1e293b, 0x1e293b]} position={[0, -0.05, 0]} />
+        {/* Main Runway */}
+        <mesh position={[-10, -0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[8, 80]} />
+            <primitive object={runwayMaterial} />
+        </mesh>
+        {/* Runway Markings */}
+        <mesh position={[-10, -0.09, 35]} rotation={[-Math.PI/2, 0, 0]}>
+            <planeGeometry args={[4, 8]} />
+            <primitive object={markingMaterial} />
+        </mesh>
+         <mesh position={[-10, -0.09, 0]} rotation={[-Math.PI/2, 0, 0]}>
+            <planeGeometry args={[0.2, 20]} />
+            <primitive object={markingMaterial} />
+        </mesh>
 
-        {/* Buildings & Infrastructure */}
+        {/* Taxiways */}
+         <mesh position={[5, -0.1, 10]} rotation={[-Math.PI / 2, 0, -0.8]}>
+            <planeGeometry args={[4, 40]} />
+            <primitive object={runwayMaterial} />
+        </mesh>
+
+        {/* Terminal Area Apron */}
+         <mesh position={[30, -0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[40, 50]} />
+            <primitive object={runwayMaterial} />
+        </mesh>
+
+        {/* Main Terminal (Stylized) */}
+        <mesh position={[48, 2, 0]}>
+            <boxGeometry args={[10, 4, 50]} />
+            <meshStandardMaterial color="#1e293b" metalness={0.8} roughness={0.2} />
+        </mesh>
+         <mesh position={[48, 4, 0]}>
+            <boxGeometry args={[12, 0.5, 52]} />
+            <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.1} />
+        </mesh>
+
+        {/* Airfield Infrastructure Markers */}
         {CRANFIELD_MARKERS.map((marker) => (
             <group key={marker.id} position={new THREE.Vector3(...marker.position)}>
-                <Marker3D data={marker} />
+                <Marker3D data={marker} viewMode={viewMode} />
             </group>
         ))}
 
-        {/* Runway Stripes */}
-        <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0, 0]}>
-            <planeGeometry args={[10, 60]} />
-            <meshStandardMaterial color="#1e293b" />
-        </mesh>
+        {/* Static Ground Vehicles */}
+        <GroundVehicle position={[25, -0.1, 10]} rotation={[0, -0.8, 0]}/>
+        <GroundVehicle position={[28, -0.1, 5]} />
     </group>
   );
 };
 
-const Marker3D = ({ data }: { data: MarkerData }) => {
+const GroundVehicle: React.FC<ComponentPropsWithoutRef<'group'>> = (props) => (
+    <group {...props}>
+        <mesh>
+            <boxGeometry args={[1, 0.5, 2]} />
+            <meshStandardMaterial color="orange" />
+        </mesh>
+        <mesh position={[0, -0.2, 0.8]}>
+            <boxGeometry args={[0.2, 0.2, 0.2]} />
+            <meshStandardMaterial color="black" />
+        </mesh>
+         <mesh position={[0, -0.2, -0.8]}>
+            <boxGeometry args={[0.2, 0.2, 0.2]} />
+            <meshStandardMaterial color="black" />
+        </mesh>
+    </group>
+)
+
+const Marker3D = ({ data, viewMode }: { data: MarkerData, viewMode: ViewMode }) => {
     const [open, setOpen] = React.useState(false);
+    const [hovered, setHover] = React.useState(false);
+
+    React.useEffect(() => {
+        if (viewMode !== ViewMode.AIRPORT) {
+            setOpen(false);
+        }
+    }, [viewMode]);
+
+    const infrastructureMaterial = React.useMemo(() => new THREE.MeshStandardMaterial({ color: "#7f8ea0", metalness: 0.8, roughness: 0.3 }), []);
+    const highlightMaterial = React.useMemo(() => new THREE.MeshStandardMaterial({ color: "#00f3ff", emissive: "#00f3ff", emissiveIntensity: 2 }), []);
+    
+    const model = React.useMemo(() => {
+        const group = new THREE.Group();
+        switch (data.id) {
+            case 'h2-farm':
+                const tank = new THREE.Mesh(new THREE.SphereGeometry(2.5, 32, 32), infrastructureMaterial);
+                const support = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.5, 32), infrastructureMaterial);
+                support.position.y = -2.5;
+                group.add(tank, support);
+                break;
+            case 'electrolyzer':
+                const building = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 4), infrastructureMaterial);
+                const pipes = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 5, 16), highlightMaterial);
+                pipes.rotation.z = Math.PI / 2;
+                pipes.position.set(0, 0, 2.5);
+                group.add(building, pipes);
+                break;
+            case 'refuel-truck':
+                const chassis = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), highlightMaterial);
+                const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1, 1.5), infrastructureMaterial);
+                cabin.position.set(0, 1, 1);
+                group.add(chassis, cabin);
+                break;
+        }
+        return group;
+    }, [data.id, infrastructureMaterial, highlightMaterial]);
 
     return (
-        <group>
-            {/* The physical object */}
-            {data.id === 'h2-farm' && (
-                <mesh position={[0, 1, 0]}>
-                    <sphereGeometry args={[1.5, 32, 32]} />
-                    <meshStandardMaterial color="#e2e8f0" metalness={0.9} roughness={0.1} />
-                </mesh>
-            )}
-            {data.id === 'electrolyzer' && (
-                <mesh position={[0, 1, 0]}>
-                    <boxGeometry args={[3, 2, 4]} />
-                    <meshStandardMaterial color="#94a3b8" metalness={0.5} />
-                </mesh>
-            )}
-            {data.id === 'refuel-truck' && (
-                <mesh position={[0, 0.5, 0]}>
-                    <boxGeometry args={[1, 1, 2.5]} />
-                    <meshStandardMaterial color="#f97316" />
-                </mesh>
-            )}
-
-            {/* The Floating UI Marker */}
-            <Html position={[0, 3, 0]} center zIndexRange={[100, 0]}>
-                <div className="relative group">
+        <group onPointerOver={() => setHover(true)} onPointerOut={() => setHover(false)}>
+            <primitive object={model} />
+            <Html position={[0, 4, 0]} center zIndexRange={[100, 0]}>
+                <div 
+                    className="relative group transition-transform duration-300 ease-in-out"
+                    style={{ transform: `scale(${hovered || open ? 1.1 : 1})` }}
+                >
                     <button 
-                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${open ? 'bg-aero-neon border-white scale-110' : 'bg-black/50 border-aero-neon hover:bg-aero-neon/30'}`}
+                        className="w-10 h-10 rounded-full border-2 border-aero-neon bg-aero-900/80 backdrop-blur-sm flex items-center justify-center transition-all duration-300 shadow-lg shadow-aero-neon/20"
                         onClick={() => setOpen(!open)}
                     >
-                        <div className={`w-2 h-2 rounded-full ${open ? 'bg-black' : 'bg-aero-neon animate-pulse'}`} />
+                        <div className="w-3 h-3 rounded-full bg-aero-neon animate-pulse" />
                     </button>
-                    
                     {open && (
-                        <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-48 bg-aero-900/95 border border-aero-neon/50 text-white p-3 rounded backdrop-blur-md shadow-xl shadow-aero-neon/10">
-                            <h3 className="font-bold text-sm text-aero-neon mb-1">{data.label}</h3>
-                            <p className="text-[10px] text-slate-300 mb-2 leading-tight">{data.description}</p>
-                            <div className="space-y-1 border-t border-slate-700 pt-2">
+                        <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 bg-aero-900/95 border border-aero-neon/50 text-white p-4 rounded-lg backdrop-blur-md shadow-2xl shadow-aero-neon/20 animate-fade-in">
+                            <h3 className="font-bold text-md text-aero-neon mb-2 font-mono uppercase tracking-widest">{data.label}</h3>
+                            <p className="text-xs text-slate-300 mb-3 leading-snug">{data.description}</p>
+                            <div className="space-y-1 border-t-2 border-aero-neon/30 pt-2">
                                 {Object.entries(data.stats).map(([k, v]) => (
-                                    <div key={k} className="flex justify-between text-[10px] font-mono">
+                                    <div key={k} className="flex justify-between text-xs font-mono">
                                         <span className="text-slate-400">{k}:</span>
-                                        <span className="text-white">{v}</span>
+                                        <span className="text-white font-bold">{v}</span>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
-                    {/* Connecting Line */}
-                    {open && <div className="absolute top-full left-1/2 w-px h-4 bg-aero-neon/50 -translate-x-1/2"></div>}
                 </div>
             </Html>
         </group>
@@ -343,9 +512,9 @@ export const Scene3D: React.FC = () => {
         </group>
 
         <group visible={viewMode === ViewMode.AIRPORT}>
-            <Airport />
+            <Airport viewMode={viewMode} />
              {/* Show aircraft landed in airport mode */}
-            <group position={[0, 0.7, 0]} scale={[0.5, 0.5, 0.5]}>
+            <group position={[-10, -4.3, 15]} rotation={[0, -Math.PI / 2, 0]} scale={[0.8, 0.8, 0.8]}>
                  <ClickableAircraft fuelType={fuelType} />
             </group>
         </group>

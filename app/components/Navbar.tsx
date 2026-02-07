@@ -3,10 +3,10 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { TabId } from '@/data/types';
+import { TabId } from '@/app/data/types';
 import { Plus, ArrowLeft } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useAppContext } from '@/context/AppContext';
+import { useAppContext } from '@/app/context/AppContext';
 import {
   Select,
   SelectContent,
@@ -28,7 +28,6 @@ const TABS: { id: TabId; label: string }[] = [
 
 export function Navbar() {
   const {
-    activeTab,
     setActiveTab,
     selectedAirport,
     setSelectedAirport,
