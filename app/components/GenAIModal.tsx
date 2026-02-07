@@ -17,22 +17,26 @@ export const GenAIModal: React.FC<GenAIModalProps> = ({ isOpen, onClose, partNam
 
   useEffect(() => {
     if (isOpen && partName) {
-      setLoading(true);
-      setError(null);
-      setImageUrl(null);
+      const fetchSchematic = async () => {
+        setLoading(true);
+        setError(null);
+        setImageUrl(null);
 
-      // Add a slight artificial delay for effect if the API is instant,
-      // but mostly to allow the UI to transition.
-      generateTechnicalSchematic(partName, fuelType)
-        .then((url) => {
+        try {
+          const url = await generateTechnicalSchematic(partName, fuelType);
           if (url) {
             setImageUrl(url);
           } else {
             setError("Unable to generate schematic. Please check API configuration.");
           }
-        })
-        .catch(() => setError("Generation failed."))
-        .finally(() => setLoading(false));
+        } catch (e) {
+          setError("Generation failed.");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchSchematic();
     }
   }, [isOpen, partName, fuelType]);
 
@@ -94,7 +98,7 @@ export const GenAIModal: React.FC<GenAIModalProps> = ({ isOpen, onClose, partNam
         {/* Footer */}
         <div className="p-4 bg-aero-800 border-t border-aero-700 flex justify-between items-center">
             <div className="font-mono text-xs text-slate-400">
-                <span className="text-aero-alert">RESTRICTED ACCESS</span> // LEVEL 5 CLEARANCE
+                <span className="text-aero-alert">RESTRICTED ACCESS</span> {/* // LEVEL 5 CLEARANCE */}
             </div>
             {!loading && imageUrl && (
                 <button className="flex items-center gap-2 px-4 py-2 bg-aero-neon/10 hover:bg-aero-neon/20 border border-aero-neon/50 rounded text-aero-neon font-mono text-sm transition-all">

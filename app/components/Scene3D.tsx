@@ -1,14 +1,11 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { 
-  OrbitControls, 
   Stars, 
   Environment, 
   PerspectiveCamera, 
   Html, 
   Float,
-  Text,
-  Line
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { ViewMode, FuelType, MarkerData } from '../types';
@@ -268,11 +265,10 @@ const Globe = () => {
 // --- Camera Controller ---
 const CameraController = ({ mode, promoMode }: { mode: ViewMode, promoMode: boolean }) => {
     const { camera } = useThree();
-    const vec = new THREE.Vector3();
 
     useFrame((state) => {
         // Target positions for each mode
-        let targetPos = new THREE.Vector3(0, 0, 0);
+        const targetPos = new THREE.Vector3(0, 0, 0);
         
         if (mode === ViewMode.AIRCRAFT) {
             targetPos.set(10, 5, 10);
