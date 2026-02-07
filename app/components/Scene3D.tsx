@@ -1,10 +1,6 @@
-<<<<<<< HEAD
 "use client";
 
-import React, { useRef, useMemo } from 'react';
-=======
 import React, { useRef } from 'react';
->>>>>>> dfeda41c60378c1c4735914bac6cd32c402ea312
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { 
   Stars, 
