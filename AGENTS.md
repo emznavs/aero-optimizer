@@ -1,3 +1,6 @@
+USE SHADCN COMPONENTS
+
+
 avoid using complex next js stuff, this is a demo app, its client side only and only using DEMO data no api routes etc.
 
 

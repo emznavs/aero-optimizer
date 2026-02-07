@@ -4,6 +4,8 @@ export enum ViewMode {
   GLOBAL = 'GLOBAL'
 }
 
+export type TabId = 'editor' | 'analysis'
+
 export enum FuelType {
   KEROSENE = 'Kerosene (Jet A-1)',
   SAF = 'Sustainable Aviation Fuel',

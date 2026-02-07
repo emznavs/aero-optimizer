@@ -1,13 +1,15 @@
 "use client";
 
 import { createContext, ReactNode, useContext, useState } from 'react'
-import { ViewMode, FuelType } from '@/data/types'
+import { ViewMode, FuelType, TabId } from '@/data/types'
 
 // 1. THE INTERNAL HOOK: Contains all state and logic. Not exported.
 function useAppContextInner() {
-  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.AIRCRAFT)
+  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.AIRPORT)
   const [fuelType, setFuelType] = useState<FuelType>(FuelType.KEROSENE)
   const [promoMode, setPromoMode] = useState<boolean>(false)
+  const [activeTab, setActiveTab] = useState<TabId>('editor')
+  const [selectedAirport, setSelectedAirport] = useState<string>('cranfield')
 
   const apiKeySet = !!process.env.API_KEY;
 
@@ -18,7 +20,11 @@ function useAppContextInner() {
     setFuelType, 
     promoMode, 
     setPromoMode,
-    apiKeySet
+    apiKeySet,
+    activeTab,
+    setActiveTab,
+    selectedAirport,
+    setSelectedAirport,
   }
 }
 
